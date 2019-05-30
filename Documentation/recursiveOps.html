@@ -40,11 +40,11 @@ be duplicated in the destination regardless of what was in the destination
 previously.
 </p>
 <p>
-If you set the <b>filesOnly flag</b> to true, no .acl or .meta files from the source
+If you set the <b>noLinks flag</b> to true, no .acl or .meta files from the source
 will be copied and any pre-existing .acl and .meta files on the destination will
 be left untouched.  Here's how to set the flag:
 <code>
-    fetcher.recursiveCopy(fromURL,toURL,{filesOnly:true})
+    fetcher.recursiveCopy(fromURL,toURL,{noLinks:true})
 </code>
 </p>
 <p>
