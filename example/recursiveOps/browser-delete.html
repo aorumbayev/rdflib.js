@@ -13,9 +13,8 @@
   go.addEventListener('click', event => {
   login().then(()=>{
       var here = document.getElementById('from').value
-      let hereDoc = $rdf.sym(here)
-      fetcher.recursiveDelete(hereDoc).then( res => {
-          if(res) console.log(res)
+      fetcher.recursiveDelete(here).then( res => {
+          console.log("All done deleting!")
       }, err => { console.log("recursiveCopy error : "+err) });
    }, err => { console.log("login error : "+err) });
   })

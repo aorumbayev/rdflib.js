@@ -1222,10 +1222,10 @@ class Fetcher {
             copyLink(head.acl,destHead.acl,"acl").then( ()=>{
               copyLink(head.meta,destHead.meta,"meta").then( ()=>{
                 return resolve()
-              }).catch(e=>{console.log(e);return resolve()})
-            }).catch(e=>{console.log(e);return resolve()})
-          }).catch(e=>{console.log(e);return resolve()})
-        }).catch(e=>{console.log(e);return resolve()})
+              }).catch(e=>{return resolve()})
+            }).catch(e=>{return resolve()})
+          }).catch(e=>{return resolve()})
+        }).catch(e=>{return resolve()})
       }
     }).catch(e=>{console.log(e); return resolve()})
     function copyOne(src,dest,options){
@@ -1240,13 +1240,15 @@ class Fetcher {
             console.log('Copying folder '+fnew+"\n into "+fparent+"\n")
             self.createContainer(fparent,fnew).then( ()=>{
               return resolve()
-            }).catch(e=>{})
+            }).catch(e=>{console.log(e); return resolve})
           }
           else return resolve()
         }).catch(e=>{return resolve()})
       }
       else {
-        self.webCopy(node,dest,options).then(()=>{ return resolve() })
+        self.webCopy(node,dest,options).then(()=>{
+          return resolve() }).catch(e=>{console.log(e); return resolve()}
+        )
       }
     })}
     function deleteOne(node){ return new Promise(resolve=>{
@@ -1272,6 +1274,7 @@ class Fetcher {
           if(hereLinkRes.status===404 && thereLinkRes.status.ok){
             console.log(`Deleting linkType <${there.uri}>\n`)
             self.delete(there.uri).then( ()=>{return resolve()})
+                .catch(e=>{return resolve()})
           }
           // if link exists on the source, copy it
           else if(hereLinkRes.status != 404){
@@ -1280,6 +1283,7 @@ class Fetcher {
             )
             self.webCopy(here,there,{contentType:here.contentType})
                 .then(()=>{ return resolve() })
+                .catch(e=>{console.log(e);return resolve()})
           }
           return resolve();
         }).catch(e=>{console.log(e);return resolve()})  // load there
