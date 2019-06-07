@@ -36,7 +36,6 @@ const RDFParser = require('./rdfxmlparser')
 const Uri= require('./uri')
 const Util = require('./util')
 const serialize = require('./serialize')
-const linkParse = require('parse-link-header')
 
 // This is a special fetch which does OIDC auth, catching 401 errors
 const {fetch} = (typeof window === "undefined")
@@ -1083,43 +1082,43 @@ class Fetcher {
       })
   }
 
-  /**
+  /*
    * Recursively copies a folder tree from one Solid space to another
    *
    * @param src {Node|string}
    * @param dest {Node|string}
-   * @param [options={}]  // {copyACL:true} copies .acl files
+   * @param [options={}] // {noLinks:true} omits .acl and .meta files
    *
    * @returns {Promise}
-   */
+  */
   recursiveCopy(src, dest, options){
-    let st = this.store
-    let ft = this.store.fetcher
-    src  = st.sym( src.uri || src )
-    dest = st.sym( dest.uri || dest )
-    src.uri = (src.uri.match(/\/$/)) ? src.uri : src.uri + "/";
-    dest.uri = (dest.uri.match(/\/$/)) ? dest.uri : dest.uri + "/";
+    let self = this
+    src  = self.store.sym( src.uri || src )
+    dest = self.store.sym( dest.uri || dest )
+    src.uri  = (src.uri.endsWith('/'))  ? src.uri  : src.uri  + "/";
+    dest.uri = (dest.uri.endsWith('/')) ? dest.uri : dest.uri + "/";
     options = options || {}
-    let promises = []
     return new Promise(function(resolve, reject){
-      ft.load(src).then(function(response) {
+      if( dest.uri.startsWith(src.uri) ){
+        return reject("Cowardly refusing to copy folder into itself!")
+      }
+      self.load(src).then(function(response) {
         if (!response.ok) throw new Error(
           'Error reading container ' + src + ' : ' + response.status
         )
-        let contents = st.each(src, ns.ldp('contains'))
-        promises = []
-        copyContainer(src,dest,options) // HANDLE THE TOP FOLDER 
+        let promises = []
+        let contents = self.store.each(src, ns.ldp('contains'))
+        options.hasFiles = contents.length
+        promises.push( self.linkOperation("COPY",src,dest,options) )
         for (let i=0; i < contents.length; i++){
           let here = contents[i]
           let there = mapURI(src, dest, here)
-          // SEND SUB-FOLDER BACK FOR PROCESSING 
-          if (st.holds(here, ns.rdf('type'), ns.ldp('Container'))){
-            promises.push(ft.recursiveCopy(here, there, options))
+          if(self.store.holds(here,ns.rdf('type'),ns.ldp('Container'))){
+            promises.push(self.recursiveCopy(here, there, options))
           }
-          else { // COPY THE FILE
-            if(options.copyACL)fetchAclDoc(here,there.uri).then()
+          else {
             console.log('Copying file ' + here+"\n  to "+ there+"\n")
-            promises.push(ft.webCopy(here,there,{contentType:"text/turtle"}))
+            promises.push( self.linkOperation("COPY",here,there) )
           }
         }
         Promise.all(promises).then(()=>{resolve("")})
@@ -1136,43 +1135,161 @@ class Fetcher {
       if (!x.uri.startsWith(src.uri)){
         throw new Error("source '"+x+"' is not in tree "+src)
       }
-      return st.sym(dest.uri + x.uri.slice(src.uri.length))
-    }
-    function copyContainer(src,dest,options){
-      if(options.copyACL) fetchAclDoc(src,dest.uri).then();
-      let fnew=  dest.uri.replace(/\/$/,'').replace(/^.*\//,'')
-      let fparent= new RegExp ( fnew )
-          fparent=dest.uri.replace(fparent,'').replace(/\/$/,'')
-      ft._fetch(dest.uri).then( response => {
-        if(response.status===404){
-          console.log('Copying folder ' + fnew+"\n  into "+fparent+"\n")
-          promises.push(ft.createContainer(fparent,fnew))
-        }
-      })
-    }
-    function fetchAclDoc(url,there){
-     return new Promise(function(resolve, reject){
-      ft.load(url).then( response => {
-        let aclRel = st.sym(
-            'http://www.iana.org/assignments/link-relations/acl'
-        )
-        let aclDoc = st.any(url,aclRel)
-        if(!aclDoc) resolve()
-        ft._fetch(aclDoc.uri).then( aclRes => {
-          if(!aclRes.ok) return resolve()
-          else {
-            there = st.sym(
-              there.replace(/[^\/]*$/,'') + aclDoc.uri.replace(/^.*\//,'')
-            )
-            console.log('Copying ACL '+aclDoc.uri+"\n  to "+there.uri+"\n")
-            promises.push(ft.webCopy(aclDoc,there,{contentType:"text/turtle"}))
-            return resolve();
-          }
-        },e=>{return resolve()})
-      },e=>{reject("Could not fetch DOC : "+e)})
-     })
+      return self.store.sym(dest.uri + x.uri.slice(src.uri.length))
     }
   }
+
+  /**
+   * Recursively deletes a folder tree
+   *
+   * @param src {Node|string}
+   * @returns {Promise}
+   *
+  */
+  recursiveDelete(target,isRepeatVisit) {
+   return new Promise( (resolve,reject) => {
+    target = (typeof target === "string")?this.store.sym(target):target;
+    target.uri = (target.uri.endsWith('/')) ?target.uri :target.uri+"/";
+    if(!isRepeatVisit){
+      let pod=`${Uri.protocol(target.uri)}://${Uri.hostpart(target.uri)}`
+      if( target.uri === `${pod}/`
+       || target.uri === `${pod}/public/`
+       || target.uri.startsWith(`${pod}/profile/`)
+       || target.uri.startsWith(`${pod}/settings/`)
+       || target.uri.startsWith(`${pod}/inbox/`)
+       || target.uri.startsWith(`${pod}/.well-known/`)
+      ){
+        return reject(`Cowardly refusing to delete <${target.uri}>!`)
+      }
+    }
+    this.load(target.uri).then( () => {
+      const contents = this.store.each(target, ns.ldp('contains'))
+      const promises = contents.map( item => {
+        if( this.store.holds(
+          item,ns.rdf('type'),ns.ldp('BasicContainer')
+        )) {
+          return( this.recursiveDelete(item,true) )
+        }
+        else {
+          return ( this.linkOperation("DELETE",item) )
+        }
+      })
+      return resolve( Promise.all(promises)
+        .then(()=> this.linkOperation("DELETE",target))
+        .catch(e=>{return resolve(e)})
+      )
+    }).catch(e=>{
+      this.linkOperation("DELETE",target).then(()=>{return resolve()})
+    })
+  })}
+
+  /**
+   * Deletes or Copies a single resource or container
+   * including its .acl and .meta links if they exist
+   *
+   * @param method {"GET"|"DELETE"|"COPY"}
+   * @param node {Node|string}
+   * @param dest {Node|string}
+   * @returns {Promise}
+   *
+   */
+  linkOperation(method,node,dest,options){ return new Promise(resolve=>{
+    options = options || {}
+    let self = this
+    let iana    = 'http://www.iana.org/assignments/link-relations/'
+    let aclRel  = this.store.sym(iana+"acl")
+    let metaRel = this.store.sym(iana+"describedBy")
+    node = self.store.sym( node.uri || node )
+    if(typeof dest !="undefined") dest = self.store.sym( dest.uri || dest )
+    getHeaders(node).then( head => {
+      if(method==="GET"){
+        return resolve(head)
+      }
+      else if(method==="DELETE"){
+        deleteOne(head.acl).then( ()=> {
+          deleteOne(head.meta).then( ()=> {
+            deleteOne(node).then( ()=> {
+              return resolve()
+            }).catch(e=>{console.log(e);return resolve()})
+          }).catch(e=>{console.log(e);return resolve()})
+        }).catch(e=>{console.log(e);return resolve()})
+      }
+      else if(method==="COPY"){
+        options.contentType = head.contentType
+        copyOne(node,dest,options).then(()=>{
+          if(options.noLinks) return resolve()
+          getHeaders(dest).then( destHead => {
+            copyLink(head.acl,destHead.acl,"acl").then( ()=>{
+              copyLink(head.meta,destHead.meta,"meta").then( ()=>{
+                return resolve()
+              }).catch(e=>{return resolve()})
+            }).catch(e=>{return resolve()})
+          }).catch(e=>{return resolve()})
+        }).catch(e=>{return resolve()})
+      }
+    }).catch(e=>{console.log(e); return resolve()})
+    function copyOne(src,dest,options){
+     return new Promise(resolve=>{
+      if( src.uri.endsWith("/") ){
+        let fnew=dest.uri.replace(/\/$/,'').replace(/^.*\//,'')
+        let fparent= new RegExp ( fnew )
+        fparent=dest.uri.replace(fparent,'').replace(/\/$/,'')
+        self._fetch(dest.uri,{method:"HEAD"}).then( res => {
+          // if pre-exists or will be created by PUT of files, don't copy
+          if(res.status===404  && !options.hasFiles){
+            console.log('Copying folder '+fnew+"\n into "+fparent+"\n")
+            self.createContainer(fparent,fnew).then( ()=>{
+              return resolve()
+            }).catch(e=>{console.log(e); return resolve})
+          }
+          else return resolve()
+        }).catch(e=>{return resolve()})
+      }
+      else {
+        self.webCopy(node,dest,options).then(()=>{
+          return resolve() }).catch(e=>{console.log(e); return resolve()}
+        )
+      }
+    })}
+    function deleteOne(node){ return new Promise(resolve=>{
+        self.delete(node).then( ()=> {
+          console.log(`Deleted ${node.uri}`)
+          return resolve()
+        }).catch(e=>{return resolve(e)})
+    })}
+    function getHeaders(node){ return new Promise(resolve=>{
+      self._fetch(node.uri,{method:"HEAD"}).then( response => {
+        self.parseLinkHeader(response.headers.get('link'),node,node.uri)
+        return resolve({
+          acl  : self.store.any(node,aclRel),
+          meta : self.store.any(node,metaRel),
+          contentType : response.headers.get("content-type")
+        })
+      }).catch(e=>{console.log(e);return resolve()})
+    })}
+    function copyLink(here,there,lkType){ return new Promise(resolve=>{
+      self._fetch(here.uri,{method:"HEAD"}).then( hereLinkRes => {
+        self._fetch(there.uri,{method:"HEAD"}).then(thereLinkRes=>{
+          // if link exists only on the destination, delete it
+          if(hereLinkRes.status===404 && thereLinkRes.status.ok){
+            console.log(`Deleting linkType <${there.uri}>\n`)
+            self.delete(there.uri).then( ()=>{return resolve()})
+                .catch(e=>{return resolve()})
+          }
+          // if link exists on the source, copy it
+          else if(hereLinkRes.status != 404){
+            console.log(
+              `Copying ${lkType} ${here.uri}\n  to ${there.uri}\n`
+            )
+            self.webCopy(here,there,{contentType:here.contentType})
+                .then(()=>{ return resolve() })
+                .catch(e=>{console.log(e);return resolve()})
+          }
+          return resolve();
+        }).catch(e=>{console.log(e);return resolve()})  // load there
+      }).catch(e=>{console.log(e); return resolve()})   // load here
+    })}
+  })}
 
   /**
    * @param uri {string}

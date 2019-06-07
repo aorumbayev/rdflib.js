@@ -1,6 +1,27 @@
 <html>
 <head>
-<title>rdflib: Introduction material</title>
+<title>rdflib: Using linkOperation</title>
+</head>
+<body>
+<h1>Using linkOperation</h1>
+
+<p>
+The linkOperation method provides a "complete" delete and copy.  In other words,
+it deletes or copies a resource or container AND any .acl or .meta files found
+in the resource's Link header.  The method operates on a single resource at a
+time - use recursiveCopy or recursiveDelete to operate on an entire tree.
+</p>
+
+<h3>fetcher.linkOperation( method, source, destination)</h3>
+
+<p>
+The method parameter should be one of "DELETE", "COPY", or "GET". The
+second parameter should be the resource to delete or copy or to get the
+link headers from.  The third parameter, used only with "COPY" is the 
+destination to copy to.  The second and third parameters may be a string
+representation of a URI or an rdflib NamedNode.
+</p>
+
 <style type="text/css">
 body {
 font-family: Trebuchet MS, Palatino, sans-serif;
@@ -31,24 +52,4 @@ a:link img, a:visited img { border-style: none }
 
 tt { font-size: 120%; background-color: #eee; padding: 0.1em }
 </style>
-</head>
-<body>
-<h1>Introductory material</h1>
-
-<div>
-<ul>
-
-  <li><a href="webapp-intro.html">Introduction to using rdflib in a Solid WebApp</a></li>
-
-  <li><a href="turtle-intro.html">Introduction to Turtle</a>.  Learn to chat in, and think in, this basic data language</li>
-
-  <li>Some recently added methods<ul>
-     <li><a href="./recursiveOps.html">recuriveCopy and recursiveDelete</a></li>
-     <li><a href="./linkOperation.html"></a>linkOperation</li>
-  </ul></li>
-
-</ul>
-
-</div>
-</body>
-</html>
+</body></html>

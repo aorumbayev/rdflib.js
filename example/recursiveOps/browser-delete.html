@@ -12,10 +12,9 @@
 
   go.addEventListener('click', event => {
   login().then(()=>{
-    var here = document.getElementById('from').value
-    var there = document.getElementById('to').value
-      fetcher.recursiveCopy(here,there).then( res => {
-          console.log("All done copying! "+res)
+      var here = document.getElementById('from').value
+      fetcher.recursiveDelete(here).then( res => {
+          console.log("All done deleting!")
       }, err => { console.log("recursiveCopy error : "+err) });
    }, err => { console.log("login error : "+err) });
   })
@@ -32,9 +31,8 @@ async function login(){
 </head>
 <body>
   <div>
-  <p><b>Testing fetcher.recursiveCopy</b></p>
-  <p><label for "from">Copy From Folder</label><input type="text" name="from" id="from" style="border: 0.1em solid green; font-size: 100%; margin=0.5em; width:400px"/></p>
-  <p><label for "to">To Folder</label><input type="text" id="to" style="border: 0.1em solid red; width:400px"/>
+  <p><b>Testing fetcher.recursiveDelete</b></p>
+  <p><label for "from">Delete Folder</label><input type="text" name="from" id="from" style="border: 0.1em solid green; font-size: 100%; margin=0.5em; width:400px"/></p>
   <button id="go">go</button></p>
   </div>
 <style>

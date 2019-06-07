@@ -14,8 +14,8 @@ const there = process.argv[3]
 console.log(`logging in`)
 auth.login().then( session => {
     console.log(`logged in as <${session.webId}>`)
-    fetcher.recursiveCopy( here, there, {copyACL:true} ).then( res => {
-        console.log("Success! "+res);
+    fetcher.recursiveCopy( here, there ).then( res => {
+        console.log(`All done copying! ${res}\n`)
     },e => console.log("Error copying : "+e))
 },e => console.log("Error logging in : "+e))
 /* END */
