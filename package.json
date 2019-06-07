@@ -32,12 +32,13 @@
   "homepage": "http://github.com/linkeddata/rdflib.js",
   "bugs": "http://github.com/linkeddata/rdflib.js/issues",
   "dependencies": {
-    "async": "^0.9.x",
-    "jsonld": "^0.4.5",
-    "n3": "^0.4.1",
-    "solid-auth-cli": "^0.2.6",
-    "solid-auth-client": "^2.3.0",
-    "xmldom": "^0.1.22"
+    "async": "3.0.1",
+    "jsonld": "1.6.2",
+    "n3": "1.1.1",
+    "parse-link-header": "1.0.1",
+    "solid-auth-cli": "0.2.6",
+    "solid-auth-client": "2.3.0",
+    "xmldom": "0.1.27"
   },
   "solid-auth-cli": "^0.2.5",
   "devDependencies": {
