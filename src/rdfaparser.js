@@ -12,12 +12,12 @@
 // options.base = base URI    not really an option, shopuld always be set.
 //
 
-const BlankNode = require('./blank-node')
-const Literal = require('./literal')
-const rdf = require('./data-factory')
-const NamedNode = require('./named-node')
-const Uri = require('./uri')
-const Util = require('./util')
+import BlankNode from './blank-node'
+import Literal from './literal'
+import rdf from './data-factory'
+import NamedNode from './named-node'
+import * as Uri from './uri'
+import * as Util from './util'
 
 if (typeof Node === 'undefined') { //  @@@@@@ Global. Interface to xmldom.
   var Node = {
@@ -36,7 +36,7 @@ if (typeof Node === 'undefined') { //  @@@@@@ Global. Interface to xmldom.
   }
 }
 
-class RDFaProcessor {
+export default class RDFaProcessor {
   constructor (kb, options) {
     this.options = options || {}
     this.kb = kb
@@ -183,7 +183,7 @@ class RDFaProcessor {
     if (!dom.baseURI) { // Note this became a read-only attribute some time before 2018
       dom.baseURI = base // oinly set if not already set
     }
-    p.process(dom)
+    p.process(dom, { baseURI: base})
   }
 
   parseSafeCURIEOrCURIEOrURI (value, prefixes, base) {
@@ -262,8 +262,12 @@ class RDFaProcessor {
     if (!window.console) {
        window.console = { log: function() {} }
     } */
+    options = options || {}
     var base
     if (node.nodeType === Node.DOCUMENT_NODE) {
+      if (node.baseURI && !options.baseURI) {
+        options.baseURI = node.baseURI  // be defensive as DOM implementations vary
+      }
       base = node.baseURI
       node = node.documentElement
       if (!node.baseURI) {
@@ -946,4 +950,5 @@ RDFaProcessor.dateTimeTypes = [
     type: 'http://www.w3.org/2001/XMLSchema#gYear' }
 ]
 
-module.exports = RDFaProcessor
+const parseRDFaDOM = RDFaProcessor.parseRDFaDOM
+export { parseRDFaDOM }

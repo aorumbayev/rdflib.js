@@ -25,22 +25,23 @@
  * To do:
  * Firing up a mail client for mid:  (message:) URLs
  */
-const IndexedFormula = require('./store')
-const log = require('./log')
-const N3Parser = require('./n3parser')
-const NamedNode = require('./named-node')
-const Namespace = require('./namespace')
-const rdfParse = require('./parse')
-const parseRDFaDOM = require('./rdfaparser').parseRDFaDOM
-const RDFParser = require('./rdfxmlparser')
-const Uri= require('./uri')
-const Util = require('./util')
-const serialize = require('./serialize')
+import IndexedFormula from './store'
+import log from './log'
+import N3Parser from './n3parser'
+import NamedNode from './named-node'
+import Namespace from './namespace'
+import rdfParse from './parse'
+import { parseRDFaDOM } from './rdfaparser'
+import RDFParser from './rdfxmlparser'
+import * as Uri from './uri'
+import * as Util from './util'
+import serialize from './serialize'
+
+import { fetch as solidAuthCli } from 'solid-auth-cli'
+import { fetch as solidAuthClient } from 'solid-auth-client'
 
 // This is a special fetch which does OIDC auth, catching 401 errors
-const {fetch} = (typeof window === "undefined")
-         ? require('solid-auth-cli')
-         : require('solid-auth-client');
+const fetch = typeof window === 'undefined' ? solidAuthCli : solidAuthClient
 
 const Parsable = {
   'text/n3': true,
@@ -281,8 +282,7 @@ class HTMLHandler extends Handler {
 
     // We only handle XHTML so we have to figure out if this is XML
     // log.info("Sniffing HTML " + xhr.resource + " for XHTML.")
-
-    if (responseText.match(/\s*<\?xml\s+version\s*=[^<>]+\?>/)) {
+    if (isXML(responseText)) {
       fetcher.addStatus(options.req, "Has an XML declaration. We'll assume " +
         "it's XHTML as the content-type was text/html.\n")
 
@@ -290,9 +290,8 @@ class HTMLHandler extends Handler {
       return xhtmlHandler.parse(fetcher, responseText, options, response)
     }
 
-    // DOCTYPE
-    // There is probably a smarter way to do this
-    if (responseText.match(/.*<!DOCTYPE\s+html[^<]+-\/\/W3C\/\/DTD XHTML[^<]+http:\/\/www.w3.org\/TR\/xhtml[^<]+>/)) {
+    // DOCTYPE html
+    if (isXHTML(responseText)) {
       fetcher.addStatus(options.req,
         'Has XHTML DOCTYPE. Switching to XHTMLHandler.\n')
 
@@ -301,7 +300,7 @@ class HTMLHandler extends Handler {
     }
 
     // xmlns
-    if (responseText.match(/[^(<html)]*<html\s+[^<]*xmlns=['"]http:\/\/www.w3.org\/1999\/xhtml["'][^<]*>/)) {
+    if (isXMLNS(responseText)) {
       fetcher.addStatus(options.req,
         'Has default namespace for XHTML, so switching to XHTMLHandler.\n')
 
@@ -339,7 +338,7 @@ class TextHandler extends Handler {
     // We only speak dialects of XML right now. Is this XML?
 
     // Look for an XML declaration
-    if (responseText.match(/\s*<\?xml\s+version\s*=[^<>]+\?>/)) {
+    if (isXML(responseText)) {
       fetcher.addStatus(options.req, 'Warning: ' + options.resource +
         " has an XML declaration. We'll assume " +
         "it's XML but its content-type wasn't XML.\n")
@@ -410,6 +409,23 @@ const HANDLERS = {
   RDFXMLHandler, XHTMLHandler, XMLHandler, HTMLHandler, TextHandler, N3Handler
 }
 
+function isXHTML (responseText) {
+  const docTypeStart = responseText.indexOf('<!DOCTYPE html')
+  const docTypeEnd = responseText.indexOf('>')
+  if (docTypeStart === -1 || docTypeEnd === -1 || docTypeStart > docTypeEnd) {
+    return false
+  }
+  return responseText.substr(docTypeStart, docTypeEnd - docTypeStart).indexOf('XHTML') !== -1
+}
+
+function isXML (responseText) {
+  return responseText.match(/\s*<\?xml\s+version\s*=[^<>]+\?>/)
+}
+
+function isXMLNS (responseText) {
+  return responseText.match(/[^(<html)]*<html\s+[^<]*xmlns=['"]http:\/\/www.w3.org\/1999\/xhtml["'][^<]*>/)
+}
+
 /** Fetcher
  *
  * The Fetcher object is a helper object for a quadstore
@@ -418,7 +434,7 @@ const HANDLERS = {
   * figuring how to parse them.  It will also refresh, remove, the data
   * and put back the fata to the web.
  */
-class Fetcher {
+export default class Fetcher {
   /**
   * @constructor
   */
@@ -567,28 +583,28 @@ class Fetcher {
     return (pcol === 'tel' || pcol === 'mailto' || pcol === 'urn')
   }
 
-  /**
+  /** Decide on credentials using old XXHR api or new fetch()  one
    * @param requestedURI {string}
    * @param options {Object}
    *
-   * @returns {boolean}
+   * @returns {}
    */
-  static withCredentials (requestedURI, options = {}) {
-    // 2014 problem:
+  static setCredentials (requestedURI, options = {}) {
+    // 2014 CORS problem:
     // XMLHttpRequest cannot load http://www.w3.org/People/Berners-Lee/card.
     // A wildcard '*' cannot be used in the 'Access-Control-Allow-Origin'
     //   header when the credentials flag is true.
     // @ Many ontology files under http: and need CORS wildcard ->
-    //   can't have withCredentials
-
-    // @@ Kludge -- need for webid which typically is served from https
-    let withCredentials = requestedURI.startsWith('https:')
-
-    if (options.withCredentials !== undefined) {
-      withCredentials = options.withCredentials
+    //   can't have credentials
+    console.log(' setCredentials: '+ requestedURI +' starts as: ' + options.credentials)
+    if (options.credentials === undefined) { // Caller using new fetch convention
+      if (options.withCredentials !== undefined) { // XHR style is what Fetcher specified before
+        options.credentials = options.withCredentials ? 'include' : 'omit'
+      } else {
+        options.credentials = 'include' // default is to be logged on
+      }
     }
-
-    return withCredentials
+    console.log('   setCredentials: '+ requestedURI +' ends as: ' + options.credentials)
   }
 
   /**
@@ -727,9 +743,7 @@ class Fetcher {
     let requestedURI = Fetcher.offlineOverride(uri)
     options.requestedURI = requestedURI
 
-    if (Fetcher.withCredentials(requestedURI, options)) {
-      options.credentials = 'include'
-    }
+    Fetcher.setCredentials(requestedURI, options)
 
     let actualProxyURI = Fetcher.proxyIfNecessary(requestedURI)
     if (requestedURI !== actualProxyURI) {
@@ -799,7 +813,7 @@ class Fetcher {
 
     return this._fetch(actualProxyURI, options)
       .then(response => this.handleResponse(response, docuri, options),
-            error => {
+            error => { // @@ handleError?
               let dummyResponse = {
                 url: actualProxyURI,
                 status: 999, // @@ what number/string should fetch failures report?
@@ -813,8 +827,9 @@ class Fetcher {
                 size: 0,
                 timeout: 0
               }
-              console.log('Fetcher: <' + actualProxyURI + '> Non-HTTP fetch error: ' + error)
-              return this.failFetch(options, 'fetch failed: ' + error, 999, dummyResponse) // Fake status code: fetch exception
+              console.log('Fetcher: <' + actualProxyURI + '> Non-HTTP fetch exception: ' + error)
+              return this.handleError(dummyResponse, docuri, options) // possible credentials retry
+              // return this.failFetch(options, 'fetch failed: ' + error, 999, dummyResponse) // Fake status code: fetch exception
 
               // handleError expects a response so we fake some important bits.
               /*
@@ -1314,30 +1329,30 @@ class Fetcher {
    * @param doc {NamedNode} - The resource
    * @returns {Promise}
   */
-   createIfNotExists (doc) {
-     return new Promise(function (resolve, reject) {
-       kb.fetcher.load(doc).then(response => {
-         console.log('createIfNotExists doc exists, all good ' + doc)
-         resolve(response)
-       }, err => {
-         if (err.response.status === 404) {
-           console.log('createIfNotExists doc does NOT exist, will create... ' + doc)
-
-           kb.fetcher.webOperation('PUT', doc.uri, {data: '', contentType: 'text/turtle'}).then(response => {
-             delete kb.fetcher.requested[doc.uri] // delete cached 404 error
-             console.log('createIfNotExists doc created ok ' + doc)
-             resolve(response)
-           }, err => {
-             console.log('createIfNotExists doc FAILED: ' + doc + ': ' + err)
-             reject(err)
-           })
-         } else {
-           console.log('createIfNotExists doc load error NOT 404:  ' + doc + ': ' + err)
-           reject(err)
-         }
-       })
-     })
-   }
+  async createIfNotExists (doc, contentType = 'text/turtle', data = '') {
+    const fetcher = this
+    try {
+      var response = await fetcher.load(doc)
+    } catch (err) {
+      if (err.response.status === 404) {
+        console.log('createIfNotExists: doc does NOT exist, will create... ' + doc)
+        try {
+          response = await fetcher.webOperation('PUT', doc.uri, {data, contentType})
+        } catch (err) {
+          console.log('createIfNotExists doc FAILED: ' + doc + ': ' + err)
+          throw err
+        }
+        delete fetcher.requested[doc.uri] // delete cached 404 error
+        // console.log('createIfNotExists doc created ok ' + doc)
+        return response
+      } else {
+        console.log('createIfNotExists doc load error NOT 404:  ' + doc + ': ' + err)
+        throw err
+      }
+    }
+    // console.log('createIfNotExists: doc exists, all good: ' + doc)
+    return response
+  }
 
   /**
    * @param parentURI {string} URI of parent container
@@ -1366,6 +1381,28 @@ class Fetcher {
     return this.webOperation('POST', parentURI, options)
   }
 
+  invalidateCache (uri) {
+    uri = uri.uri || uri // Allow a NamedNode to be passed as it is very common
+    const fetcher = this
+    if (fetcher.fetchQueue && fetcher.fetchQueue[uri]) {
+      console.log('Internal error - fetchQueue exists ' + uri)
+      var promise = fetcher.fetchQueue[uri]
+      if (promise.PromiseStatus === 'resolved') {
+        delete fetcher.fetchQueue[uri]
+      } else { // pending
+        delete fetcher.fetchQueue[uri]
+        console.log('*** Fetcher: pending fetchQueue deleted ' + uri)
+      }
+    } if (fetcher.requested[uri] && fetcher.requested[uri] !== 'done' &&
+     fetcher.requested[uri] !== 'failed' && fetcher.requested[uri] !== 404) {
+       let msg = `Rdflib: fetcher: Destructive operation on <${fetcher.requested[uri]}> file being fetched! ` + uri
+      console.error(msg)
+      // alert(msg)
+    } else {
+      delete fetcher.requested[uri] // invalidate read cache -- @@ messes up logic if request in progress ??
+      delete fetcher.nonexistent[uri]
+    }
+  }
   /**
    * A generic web opeation, at the fetch() level.
    * does not invole the quadstore.
@@ -1393,15 +1430,13 @@ class Fetcher {
       options.headers = options.headers || {}
       options.headers['content-type'] = options.contentType
     }
-    if (Fetcher.withCredentials(uri, options)) {
-      options.credentials = 'include' // Otherwise coookies are not sent
-    }
+    Fetcher.setCredentials(uri, options)
 
     return new Promise(function (resolve, reject) {
       fetcher._fetch(uri, options).then(response => {
         if (response.ok) {
-          if (method === 'PUT' || method === 'PATCH'|| method === 'POST'|| method === 'DELETE') {
-            delete fetcher.requested[uri] // invalidate read cache
+          if (method === 'PUT' || method === 'PATCH' || method === 'POST' || method === 'DELETE') {
+            fetcher.invalidateCache (uri)
           }
           if (response.body) {
             response.text().then(data => {
@@ -1469,8 +1504,8 @@ class Fetcher {
       if (request !== undefined) {
         let response = kb.any(request, ns.link('response'))
 
-        if (response !== undefined) {
-          // console.log('@@@ looking for ' + ns.httph(header.toLowerCase()))
+        if (response !== undefined && kb.anyValue(response, ns.http('status')) && kb.anyValue(response, ns.http('status')).startsWith('2')) {
+          // Only look at success returns - not 401 error messagess etc
           let results = kb.each(response, ns.httph(header.toLowerCase()))
 
           if (results.length) {
@@ -1618,13 +1653,14 @@ class Fetcher {
   }
 
   retryNoCredentials (docuri, options) {
-    console.log('web: Retrying with no credentials for ' + options.resource)
+    console.log('Fetcher: CORS: RETRYING with NO CREDENTIALS for ' + options.resource)
 
     options.retriedWithNoCredentials = true // protect against being called twice
 
     delete this.requested[docuri] // forget the original request happened
-
-    let newOptions = Object.assign({}, options, { withCredentials: false })
+    delete this.fetchQueue[docuri]
+    // Note: XHR property was withCredentials, but fetch property is just credentials
+    let newOptions = Object.assign({}, options, { credentials: 'omit' })
 
     this.addStatus(options.req,
       'Abort: Will retry with credentials SUPPRESSED to see if that helps')
@@ -1664,7 +1700,7 @@ class Fetcher {
   handleError (response, docuri, options) {
     if (this.isCrossSite(docuri)) {
       // Make sure we haven't retried already
-      if (options.withCredentials && !options.retriedWithNoCredentials) {
+      if (options.credentials && options.credentials === 'include' && !options.retriedWithNoCredentials) {
         return this.retryNoCredentials(docuri, options)
       }
 
@@ -1966,6 +2002,5 @@ class Fetcher {
 // whether we want to track it ot not. including ontologies loaed though the XSSproxy
 }
 
-module.exports = Fetcher
-module.exports.HANDLERS = HANDLERS
-module.exports.CONTENT_TYPE_BY_EXT = CONTENT_TYPE_BY_EXT
+Fetcher.HANDLERS = HANDLERS
+Fetcher.CONTENT_TYPE_BY_EXT = CONTENT_TYPE_BY_EXT

@@ -1,15 +1,14 @@
-module.exports = parse
-
-const BlankNode = require('./blank-node')
-const jsonld = require('jsonld')
-const Literal = require('./literal')
-const N3 = require('n3')  // @@ Goal: remove this dependency
-const N3Parser = require('./n3parser')
-const NamedNode = require('./named-node')
-const parseRDFaDOM = require('./rdfaparser').parseRDFaDOM
-const RDFParser = require('./rdfxmlparser')
-const sparqlUpdateParser = require('./patch-parser')
-const Util = require('./util')
+import BlankNode from './blank-node'
+import DataFactory from './data-factory'
+import jsonld from 'jsonld'
+import Literal from './literal'
+import { Parser as N3jsParser } from 'n3'  // @@ Goal: remove this dependency
+import N3Parser from './n3parser'
+import NamedNode from './named-node'
+import { parseRDFaDOM } from './rdfaparser'
+import RDFParser from './rdfxmlparser'
+import sparqlUpdateParser from './patch-parser'
+import * as Util from './util'
 
 /**
  * Parse a string and put the result into the graph kb.
@@ -17,7 +16,7 @@ const Util = require('./util')
  * Unfortunately jsdonld is currently written to need to be called async.
  * Hence the mess below with executeCallback.
  */
-function parse (str, kb, base, contentType, callback) {
+export default function parse (str, kb, base, contentType, callback) {
   contentType = contentType || 'text/turtle'
   contentType = contentType.split(';')[0]
   try {
@@ -41,7 +40,7 @@ function parse (str, kb, base, contentType, callback) {
     } else if (contentType === 'application/ld+json' ||
                contentType === 'application/nquads' ||
                contentType === 'application/n-quads') {
-      var n3Parser = N3.Parser()
+      var n3Parser = new N3jsParser({ factory: DataFactory })
       var triples = []
       if (contentType === 'application/ld+json') {
         var jsonDocument
@@ -119,44 +118,10 @@ function parse (str, kb, base, contentType, callback) {
   }
 
   function tripleCallback (err, triple, prefixes) {
-    if (err) {
-      callback(err, kb)
-    }
     if (triple) {
-      triples.push(triple)
+      kb.add(triple)
     } else {
-      for (var i = 0; i < triples.length; i++) {
-        addTriple(kb, triples[i])
-      }
-      callback(null, kb)
-    }
-  }
-
-  function addTriple (kb, triple) {
-    var subject = createTerm(triple.subject)
-    var predicate = createTerm(triple.predicate)
-    var object = createTerm(triple.object)
-    var why = null
-    if (triple.graph) {
-      why = createTerm(triple.graph)
-    }
-    kb.add(subject, predicate, object, why)
-  }
-
-  function createTerm (termString) {
-    var value
-    if (N3.Util.isLiteral(termString)) {
-      value = N3.Util.getLiteralValue(termString)
-      var language = N3.Util.getLiteralLanguage(termString)
-      var datatype = new NamedNode(N3.Util.getLiteralType(termString))
-      return new Literal(value, language, datatype)
-    } else if (N3.Util.isIRI(termString)) {
-      return new NamedNode(termString)
-    } else if (N3.Util.isBlank(termString)) {
-      value = termString.substring(2, termString.length)
-      return new BlankNode(value)
-    } else {
-      return null
+      callback(err, kb)
     }
   }
 }

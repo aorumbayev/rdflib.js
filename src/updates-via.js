@@ -1,9 +1,9 @@
 /*
  * Updates-Via
  */
-const namedNode = require('./data-factory').namedNode
+import DataFactory from './data-factory'
 
-class UpdatesSocket {
+export class UpdatesSocket {
   constructor (parent, via) {
     this.parent = parent
     this.via = via
@@ -103,7 +103,7 @@ class UpdatesSocket {
   }
 }
 
-class UpdatesVia {
+export class UpdatesVia {
   constructor (fetcher) {
     this.fetcher = fetcher
     this.graph = {}
@@ -131,7 +131,7 @@ class UpdatesVia {
     return true
   }
   onUpdate (uri, d) {
-    return this.fetcher.refresh(namedNode(uri))
+    return this.fetcher.refresh(DataFactory.namedNode(uri))
   }
   register (via, uri) {
     if (this.via[via] == null) {
@@ -140,6 +140,3 @@ class UpdatesVia {
     return this.via[via].subscribe(uri)
   }
 }
-
-module.exports.UpdatesSocket = UpdatesSocket
-module.exports.UpdatesVia = UpdatesVia

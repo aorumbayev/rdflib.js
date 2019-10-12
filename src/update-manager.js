@@ -4,14 +4,14 @@
 ** 2010-08-08 TimBL folded in Kenny's WEBDAV
 ** 2010-12-07 TimBL addred local file write code
 */
-const IndexedFormula = require('./store')
-const docpart = require('./uri').docpart
-const Fetcher = require('./fetcher')
-const namedNode = require('./data-factory').namedNode
-const Namespace = require('./namespace')
-const Serializer = require('./serializer')
-const uriJoin = require('./uri').join
-const Util = require('./util')
+import IndexedFormula from './store'
+import { docpart } from './uri'
+import Fetcher from './fetcher'
+import DataFactory from './data-factory'
+import Namespace from './namespace'
+import Serializer from './serializer'
+import { join as uriJoin } from './uri'
+import * as Util from './util'
 
 /** Update Manager
 *
@@ -21,7 +21,7 @@ const Util = require('./util')
 * and also looking out for concurrent updates from other agents
 */
 
-class UpdateManager {
+export default class UpdateManager {
   /** @constructor
    * @param {IndexedFormula} store - the quadstore to store data and metadata. Created if not passed.f
   */
@@ -76,12 +76,13 @@ class UpdateManager {
     if (!kb) {
       kb = this.store
     }
+    uri = uri.uri || uri // Allow Named Node to be passed
 
     if (uri.slice(0, 8) === 'file:///') {
       if (kb.holds(
             kb.sym(uri),
-            namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-            namedNode('http://www.w3.org/2007/ont/link#MachineEditableDocument'))) {
+            DataFactory.namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+            DataFactory.namedNode('http://www.w3.org/2007/ont/link#MachineEditableDocument'))) {
         return 'LOCALFILE'
       }
 
@@ -99,16 +100,22 @@ class UpdateManager {
     var definitive = false
     var requests = kb.each(undefined, this.ns.link('requestedURI'), docpart(uri))
 
-    // Hack for the moment @@@@ 2016-02-12
-    if (kb.holds(namedNode(uri), this.ns.rdf('type'), this.ns.ldp('Resource'))) {
-      return 'SPARQL'
-    }
     var method
     for (var r = 0; r < requests.length; r++) {
       request = requests[r]
       if (request !== undefined) {
         var response = kb.any(request, this.ns.link('response'))
         if (request !== undefined) {
+          var wacAllow = kb.anyValue(response, this.ns.httph('wac-allow'))
+          if (wacAllow) {
+            for (var bit of wacAllow.split(',')) {
+              var lr = bit.split('=')
+              if (lr[0].includes('user') && !lr[1].includes('write') && !lr[1].includes('append') ) {
+                console.log('    editable? excluded by WAC-Allow: ', wacAllow)
+                return false
+              }
+            }
+          }
           var acceptPatch = kb.each(response, this.ns.httph('accept-patch'))
           if (acceptPatch.length) {
             for (let i = 0; i < acceptPatch.length; i++) {
@@ -1011,7 +1018,7 @@ class UpdateManager {
         }
 
         delete kb.fetcher.nonexistent[doc.uri]
-        delete kb.fetcher.requested[doc.uri]
+        delete kb.fetcher.requested[doc.uri] // @@ could this mess with the requested state machine? if a fetch is in progress
 
         if (typeof data !== 'string') {
           data.map((st) => {
@@ -1069,5 +1076,3 @@ class UpdateManager {
     })
   }
 }
-
-module.exports = UpdateManager
