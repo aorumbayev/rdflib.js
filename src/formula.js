@@ -7,7 +7,7 @@ import log from './log'
 import NamedNode from './named-node'
 import Namespace from './namespace'
 import Node from './node'
-import Serializer from './serialize'
+import Serializer from './serializer'
 import Statement from './statement'
 import Variable from './variable'
 
