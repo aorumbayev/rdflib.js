@@ -11,6 +11,7 @@ import DataFactory from './data-factory'
 import Namespace from './namespace'
 import Serializer from './serializer'
 import { join as uriJoin } from './uri'
+import { isStore } from './util'
 import * as Util from './util'
 
 /** Update Manager
@@ -100,6 +101,18 @@ export default class UpdateManager {
     var definitive = false
     var requests = kb.each(undefined, this.ns.link('requestedURI'), docpart(uri))
 
+    // This if-statement does not follow the Solid spec, but temporarily reverts this change:
+    // https://github.com/linkeddata/rdflib.js/commit/11519162df4d31067a5c175686a29532552f2bea#diff-0aaa1c3585187a3868b62f3bcdca96f4L103
+    // It is necessary because Node Solid Server does not currently send the required header that
+    // lets rdflib know that it accepts SPARQL queries:
+    // https://github.com/linkeddata/rdflib.js/issues/359#issuecomment-537952239
+    // A fix has been submitted to Node Solid Server that will be included in its next release:
+    // https://github.com/solid/node-solid-server/pull/1313
+    // Once that release has been published to the major Pod hosters, the commit that introduced
+    // this statement should be reverted:
+    if (kb.holds(DataFactory.namedNode(uri), this.ns.rdf('type'), this.ns.ldp('Resource'))) {
+        return 'SPARQL'
+    }
     var method
     for (var r = 0; r < requests.length; r++) {
       request = requests[r]
@@ -194,7 +207,7 @@ export default class UpdateManager {
     bnodes.sort() // in place sort - result may have duplicates
     var bnodes2 = []
     for (let j = 0; j < bnodes.length; j++) {
-      if (j === 0 || !bnodes[j].sameTerm(bnodes[j - 1])) {
+      if (j === 0 || !bnodes[j].equals(bnodes[j - 1])) {
         bnodes2.push(bnodes[j])
       }
     }
@@ -669,10 +682,10 @@ export default class UpdateManager {
     try {
       var kb = this.store
       var ds = !deletions ? []
-        : deletions instanceof IndexedFormula ? deletions.statements
+        : isStore(deletions) ? deletions.statements
           : deletions instanceof Array ? deletions : [ deletions ]
       var is = !insertions ? []
-        : insertions instanceof IndexedFormula ? insertions.statements
+        : isStore(insertions) ? insertions.statements
           : insertions instanceof Array ? insertions : [ insertions ]
       if (!(ds instanceof Array)) {
         throw new Error('Type Error ' + (typeof ds) + ': ' + ds)
@@ -697,7 +710,7 @@ export default class UpdateManager {
       var clauses = { 'delete': ds, 'insert': is }
       verbs.map(function (verb) {
         clauses[verb].map(function (st) {
-          if (!doc.sameTerm(st.why)) {
+          if (!doc.equals(st.why)) {
             throw new Error('update: destination ' + doc +
               ' inconsistent with delete quad ' + st.why)
           }
